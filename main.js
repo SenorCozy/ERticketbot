@@ -704,7 +704,12 @@ app.post("/restart", ensureAuthenticated, checkModeratorRole, (req, res) => {
   }
 });
 
-// 📌 Dashboard Route
+// 🔁 Redirect root to /dashboard
+app.get("/", ensureAuthenticated, checkModeratorRole, (req, res) => {
+  res.redirect("/dashboard");
+});
+
+// 🧠 Main dashboard route
 app.get(
   "/dashboard",
   ensureAuthenticated,
@@ -748,19 +753,17 @@ app.get(
         );
       });
 
-      // ✅ Ensure `res.render()` is called only once
       res.render("dashboard", {
         botStatus,
-        serverCount: client.guilds.cache.size,
         activeTickets,
         user: req.user,
-        transcripts, // ✅ Now correctly passed
+        transcripts,
         botAvatar,
         botName,
       });
     } catch (error) {
       console.error("❌ Error loading dashboard:", error);
-      res.redirect("/auth/discord"); // ✅ Auto-redirect to login if session fails
+      res.redirect("/auth/discord");
     }
   }
 );
