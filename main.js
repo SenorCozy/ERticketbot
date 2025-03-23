@@ -584,7 +584,7 @@ passport.use(
     {
       clientID: process.env.DISCORD_CLIENT_ID,
       clientSecret: process.env.DISCORD_CLIENT_SECRET,
-      callbackURL: "https://myticketbot.loca.lt/auth/discord/callback",
+      callbackURL: "https://ticketbot.cc/auth/discord/callback",
       scope: ["identify", "guilds", "guilds.members.read"],
     },
     async (accessToken, refreshToken, profile, done) => {
