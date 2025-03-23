@@ -1,0 +1,190 @@
+/* Global Styles */
+body {
+  font-family: "Inter", sans-serif;
+  background: #2b2d31; /* Discord-like dark background */
+  color: #dcddde; /* Light text color */
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* Navbar */
+.navbar {
+  background: #23272a;
+  padding: 15px 0;
+  text-align: center;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  z-index: 1000;
+}
+
+.navbar ul {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  gap: 25px;
+  padding: 0;
+  margin: 0;
+}
+
+.navbar ul li a {
+  text-decoration: none;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 10px 15px;
+  transition: 0.3s;
+}
+
+.navbar ul li a:hover {
+  background: #3b3f5e;
+  color: #f0db4f;
+  border-radius: 5px;
+}
+
+/* Transcript Container */
+.transcript-container {
+  max-width: 800px;
+  background: #36393f;
+  padding: 20px;
+  margin-top: 80px; /* Enough space for the fixed navbar */
+  border-radius: 8px;
+}
+
+/* Ticket Meta Info */
+.ticket-meta {
+  background: #2f3136;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+}
+
+.ticket-meta p {
+  margin: 5px 0;
+}
+
+/* Messages Container */
+.messages-container {
+  margin-top: 1px;
+}
+
+.message {
+  display: flex;
+  align-items: flex-start;
+  padding: 3px;
+  border-bottom: 1px solid #40444b;
+  gap: 5px;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.markdown-content p {
+  margin: 0;
+  padding: 0;
+}
+
+.message-content {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 3px;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1px;
+}
+
+.username {
+  font-weight: bold;
+  color: #7289da;
+  font-size: 14px;
+}
+
+.timestamp {
+  font-size: 0.8em;
+  color: #aaa;
+}
+
+/* Actual text content */
+.content {
+  margin: 0px 0;
+}
+
+/* Attachments */
+.attachments img {
+  max-width: 250px;
+  border-radius: 5px;
+  margin-top: 5px;
+}
+
+/* Embeds */
+.embed-container {
+  background: #2f3136;
+  border-left: 4px solid #faa61a;
+  padding: 8px;
+  border-radius: 5px;
+  margin: 5px 0;
+  max-width: 90%;
+}
+
+.embed-title {
+  font-weight: bold;
+  color: #ffcc00;
+  font-size: 1rem;
+}
+
+.embed-description {
+  font-size: 0.95em;
+  color: #ccc;
+  margin-top: 5px;
+}
+
+.embed-thumbnail {
+  max-width: 120px;
+  border-radius: 5px;
+  margin-top: 5px;
+  display: block;
+}
+
+/* Reactions (if you store them) */
+.reactions {
+  margin-top: 5px;
+  font-size: 0.9em;
+  color: #aaa;
+}
+
+.reaction {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 3px 6px;
+  background: #40444b;
+  border-radius: 5px;
+}
+
+/* Fade-in animation for the page */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  opacity: 0;
+  animation: fadeIn 0.5s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

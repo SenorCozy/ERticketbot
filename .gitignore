@@ -1,0 +1,9 @@
+.env
+node_modules
+bot.log
+error.log
+sessions.db
+tickets.db
+backups
+.vscode
+delete later
