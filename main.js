@@ -1022,9 +1022,9 @@ app.get("/logout", (req, res) => {
     console.log("⏳ Waiting for bot to be ready...");
     await readyPromise;
 
-    server.listen(PORT, () => {
+    server.listen(PORT, "0.0.0.0", () => {
       console.log(
-        `🚀 Web dashboard running with WebSockets on http://localhost:${PORT}`
+        `🚀 Web dashboard running with WebSockets on http://0.0.0.0:${PORT}`
       );
     });
   } catch (error) {

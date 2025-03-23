@@ -807,12 +807,6 @@ async function createPlatformTicket(interaction, client) {
           });
         }
 
-        console.log(
-          "🟢 Debug: Interaction before calling createTicketChannel:",
-          interaction
-        );
-        console.log("🟢 Debug: Interaction.customId:", interaction.customId);
-
         // ✅ Create the ticket channel
         const ticketChannel = await createTicketChannel(
           guild,
