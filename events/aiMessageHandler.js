@@ -31,7 +31,22 @@ module.exports = {
 
       console.log("🟢 Message received from:", message.author.username);
 
-      // Check if AI is enabled for this guild
+      // Only proceed if it's a reply to the bot or a mention
+      const isReplyToBot =
+        message.reference &&
+        (await message.channel.messages
+          .fetch(message.reference.messageId)
+          .then((msg) => msg.author.id === client.user.id)
+          .catch(() => false));
+
+      const isMentioningBot = message.mentions.has(message.client.user.id);
+
+      if (!isReplyToBot && !isMentioningBot) {
+        console.log("🔴 Not a bot reply or mention.");
+        return;
+      }
+
+      // ✅ Already validated it's a relevant AI message, now check DB and channel
       db.get(
         "SELECT ai_enabled FROM ai_settings WHERE guild_id = ?",
         [message.guild.id],
@@ -43,13 +58,14 @@ module.exports = {
 
           console.log("🔍 AI settings:", settings);
 
-          // If AI is disabled, return early
           if (settings && !settings.ai_enabled) {
             console.log("🔴 AI is disabled for this guild.");
             return;
           }
 
-          // Check if it's a ticket channel
+          const isAllowedAIChannel =
+            message.channel.id === process.env.AI_CHAT_CHANNEL_ID;
+
           db.get(
             "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
             [message.channel.id],
@@ -61,28 +77,16 @@ module.exports = {
                 );
                 return;
               }
-              if (!ticket) {
-                console.log("🔴 Not a valid ticket channel.");
-                return; // Not a valid ticket channel
-              }
 
-              console.log("🟢 Valid ticket channel detected.");
-
-              // Check if the message is a reply to the bot or a mention
-              const isReplyToBot =
-                message.reference &&
-                (await message.channel.messages
-                  .fetch(message.reference.messageId)
-                  .then((msg) => msg.author.id === client.user.id)
-                  .catch(() => false));
-
-              const isMentioningBot = message.mentions.has(client.user.id);
-              if (!isReplyToBot && !isMentioningBot) {
-                console.log("🔴 Message is not a reply or mention.");
+              const isValidTicket = Boolean(ticket);
+              if (!isAllowedAIChannel && !isValidTicket) {
+                console.log(
+                  "🔴 Message is not in a valid ticket or AI channel."
+                );
                 return;
               }
 
-              console.log("🟢 Message is a reply or mention.");
+              console.log("🟢 Valid AI interaction channel detected.");
 
               // **Cooldown: 10 seconds per user**
               const cooldownKey = `${message.author.id}`;
@@ -168,6 +172,14 @@ module.exports = {
 
                   console.log("🟢 Prompt:", prompt);
 
+                  //ai health tracking variables
+                  const modelUsedPrimary = "deepseek/deepseek-r1:free";
+                  const modelUsedFallback = "deepseek/deepseek-chat:free";
+                  const fallbackUsed = false;
+                  const promptLength = prompt.length;
+                  const estimatedTokens = Math.round(promptLength / 4);
+                  const startTime = Date.now();
+
                   // Fetch conversation history for this ticket with relevance filtering
                   const history = await new Promise((resolve, reject) => {
                     db.all(
@@ -196,10 +208,11 @@ module.exports = {
 
                   try {
                     // Call OpenRouter AI
+                    const apiStart = Date.now();
                     const response = await axios.post(
                       "https://openrouter.ai/api/v1/chat/completions",
                       {
-                        model: "deepseek/deepseek-r1:free",
+                        model: modelUsedPrimary,
                         messages: [
                           { role: "system", content: personality },
                           ...history, // Include conversation history
@@ -218,7 +231,7 @@ module.exports = {
                     );
 
                     const reply = response.data.choices[0].message.content;
-
+                    const responseTime = Date.now() - apiStart;
                     // Check if the response is empty or invalid
                     if (!reply || reply.trim().length === 0) {
                       console.error("❌ AI returned an empty response.");
@@ -247,6 +260,24 @@ module.exports = {
                     return await thinkingMessage.edit({
                       content: truncatedReply,
                     });
+                    db.run(
+                      `INSERT INTO ai_logs (
+                        user_id, guild_id, ticket_id, prompt_length, model_used,
+                        fallback_used, tokens_estimated, response_time_ms, success, error_message
+                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [
+                        message.author.id,
+                        message.guild.id,
+                        ticket.id,
+                        promptLength,
+                        modelUsedPrimary,
+                        false,
+                        estimatedTokens,
+                        responseTime,
+                        true,
+                        null,
+                      ]
+                    );
                   } catch (apiError) {
                     console.error("❌ OpenRouter API error:", apiError);
                     if (apiError.response) {
@@ -259,7 +290,7 @@ module.exports = {
                         apiError.response.status
                       );
                     }
-
+                    const fallbackStart = Date.now();
                     // **Fallback to DeepSeek Chat v3 if API fails**
                     try {
                       console.log("🔄 Falling back to DeepSeek Chat v3...");
@@ -313,15 +344,53 @@ module.exports = {
                         "INSERT INTO conversation_history (ticket_id, role, content) VALUES (?, ?, ?)",
                         [ticket.id, "assistant", truncatedFallbackReply]
                       );
-
+                      const responseTime = Date.now() - fallbackStart;
                       // ✅ Edit the "thinking" message with the fallback response
                       return await thinkingMessage.edit({
                         content: truncatedFallbackReply,
                       });
+                      db.run(
+                        `INSERT INTO ai_logs (
+                          user_id, guild_id, ticket_id, prompt_length, model_used,
+                          fallback_used, tokens_estimated, response_time_ms, success, error_message
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                          message.author.id,
+                          message.guild.id,
+                          ticket.id,
+                          promptLength,
+                          modelUsedFallback,
+                          true,
+                          estimatedTokens,
+                          responseTime,
+                          true,
+                          null,
+                        ]
+                      );
                     } catch (fallbackError) {
                       console.error("❌ Error in AI fallback:", fallbackError);
                       await thinkingMessage.edit(
                         "⚠️ AI is struggling to reply right now."
+                      );
+                      const totalTime = Date.now() - startTime;
+
+                      db.run(
+                        `INSERT INTO ai_logs (
+                          user_id, guild_id, ticket_id, prompt_length, model_used,
+                          fallback_used, tokens_estimated, response_time_ms, success, error_message
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                          message.author.id,
+                          message.guild.id,
+                          ticket.id,
+                          promptLength,
+                          modelUsedFallback,
+                          true,
+                          estimatedTokens,
+                          totalTime,
+                          false,
+                          fallbackError.message || "Unknown fallback error",
+                        ]
                       );
                     }
                   }

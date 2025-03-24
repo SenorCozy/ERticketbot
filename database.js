@@ -102,6 +102,30 @@ async function deleteOldBackups() {
 function initializeTables() {
   db.serialize(() => {
     db.run("BEGIN TRANSACTION");
+    //create ai_info table
+    db.run(
+      `CREATE TABLE IF NOT EXISTS ai_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        guild_id TEXT,
+        ticket_id TEXT,
+        prompt_length INTEGER,
+        model_used TEXT,
+        fallback_used BOOLEAN,
+        tokens_estimated INTEGER,
+        response_time_ms INTEGER,
+        success BOOLEAN,
+        error_message TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      function (err) {
+        if (err) {
+          console.error("❌ Error creating 'ai_logs' table:", err);
+        } else {
+          console.log("✅ 'ai_logs' table created or already exists.");
+        }
+      }
+    );
 
     // Create tickets table
     db.run(
