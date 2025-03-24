@@ -117,9 +117,13 @@ module.exports = {
                 content: "💭 Thinking...",
               });
 
-              // Fetch AI settings
+              // Fetch AI settings for both chat and ticket AI modes
               db.get(
-                "SELECT ai_mode, max_tokens FROM ai_settings WHERE guild_id = ?",
+                `SELECT 
+    ai_chat_enabled, ai_chat_mode, ai_chat_max_tokens,
+    ticket_ai_enabled, ticket_ai_mode, ticket_ai_max_tokens,
+    ignore_token_limit
+  FROM ai_settings WHERE guild_id = ?`,
                 [message.guild.id],
                 async (settingsErr, settings) => {
                   if (settingsErr) {
@@ -127,22 +131,44 @@ module.exports = {
                       "❌ Error fetching AI settings:",
                       settingsErr
                     );
+                    await thinkingMessage.edit("⚠️ Error loading AI settings.");
+                    return;
+                  }
+
+                  const isChat = isAllowedAIChannel && !isValidTicket;
+                  const isTicket = isValidTicket;
+
+                  if (isChat && !settings.ai_chat_enabled) {
+                    console.log("🔴 AI chat disabled.");
                     await thinkingMessage.edit(
-                      "⚠️ An error occurred while fetching AI settings."
+                      "⚠️ AI chat is currently disabled."
+                    );
+                    return;
+                  }
+                  if (isTicket && !settings.ticket_ai_enabled) {
+                    console.log("🔴 Ticket AI disabled.");
+                    await thinkingMessage.edit(
+                      "⚠️ Ticket AI is currently disabled."
                     );
                     return;
                   }
 
-                  const aiMode = settings?.ai_mode || "casual";
-                  const ignoreTokenLimit =
-                    settings?.ignore_token_limit || false;
-                  const maxTokens = ignoreTokenLimit
+                  const aiMode = isChat
+                    ? settings.ai_chat_mode || "casual"
+                    : settings.ticket_ai_mode || "casual";
+
+                  const maxTokens = settings.ignore_token_limit
                     ? null
-                    : settings?.max_tokens || 50000;
+                    : isChat
+                    ? settings.ai_chat_max_tokens || 50000
+                    : settings.ticket_ai_max_tokens || 50000;
 
-                  console.log("🟢 AI Mode:", aiMode);
+                  console.log(
+                    `🧠 Context: ${
+                      isChat ? "AI Chat" : "Ticket"
+                    } | Mode: ${aiMode} | Tokens: ${maxTokens}`
+                  );
 
-                  // Define AI personality prompts
                   const aiPrompts = {
                     professional:
                       "You are a helpful and professional assistant in a Discord server dedicated to Elden Ring. Please try to prioritize up to date information consistent with the latest game patch. Your primary role is to provide concise and clear advice for defeating bosses, navigating areas, and solving challenges in the game. Do not provide explanations, rationales, or meta-commentary about your response. Just provide the answer or advice directly. If the question is unrelated to Elden Ring, respond appropriately.",
@@ -179,6 +205,8 @@ module.exports = {
                   const promptLength = prompt.length;
                   const estimatedTokens = Math.round(promptLength / 4);
                   const startTime = Date.now();
+                  const ticketId =
+                    ticket?.id || `ai_channel_${message.channel.id}`;
 
                   // Fetch conversation history for this ticket with relevance filtering
                   const history = await new Promise((resolve, reject) => {

@@ -5,11 +5,21 @@ require("dotenv").config(); // Load .env for role ID
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("toggleai")
-    .setDescription("Enable or disable AI responses in ticket channels")
+    .setDescription("Enable or disable AI responses for tickets or AI chat")
+    .addStringOption((option) =>
+      option
+        .setName("context")
+        .setDescription("Which AI context to toggle")
+        .setRequired(true)
+        .addChoices(
+          { name: "ticket", value: "ticket" },
+          { name: "chat", value: "chat" }
+        )
+    )
     .addBooleanOption((option) =>
       option
         .setName("enabled")
-        .setDescription("Enable or disable AI")
+        .setDescription("Enable or disable the selected AI context")
         .setRequired(true)
     ),
 
@@ -18,7 +28,6 @@ module.exports = {
       interaction.user.id
     );
 
-    // ✅ Check if the user has the required role
     const allowedRoles = [
       process.env.ELDER_TICKET_MODERATOR_ROLE,
       process.env.ELDEN_MODERATOR,
@@ -36,11 +45,18 @@ module.exports = {
       });
     }
 
+    const context = interaction.options.getString("context"); // "ticket" or "chat"
     const enabled = interaction.options.getBoolean("enabled");
 
-    // Update the AI enabled state in the database
+    const column = context === "chat" ? "ai_chat_enabled" : "ticket_ai_enabled";
+
+    // Insert or update the correct field
     db.run(
-      "INSERT OR REPLACE INTO ai_settings (guild_id, ai_enabled) VALUES (?, ?)",
+      `
+      INSERT INTO ai_settings (guild_id, ${column})
+      VALUES (?, ?)
+      ON CONFLICT(guild_id) DO UPDATE SET ${column} = excluded.${column}
+      `,
       [interaction.guild.id, enabled],
       (err) => {
         if (err) {
@@ -52,9 +68,9 @@ module.exports = {
         }
 
         interaction.reply({
-          content: `✅ AI responses have been **${
-            enabled ? "enabled" : "disabled"
-          }**.`,
+          content: `✅ ${
+            context === "chat" ? "AI Chat" : "Ticket AI"
+          } has been **${enabled ? "enabled" : "disabled"}**.`,
           flags: 64,
         });
       }

@@ -164,14 +164,16 @@ function initializeTables() {
       }
     );
 
-    // Create ai_settings table
     db.run(
       `CREATE TABLE IF NOT EXISTS ai_settings (
         guild_id TEXT PRIMARY KEY,
         ai_mode TEXT DEFAULT 'professional',
         max_tokens INTEGER DEFAULT 50000,
         ignore_token_limit BOOLEAN DEFAULT FALSE,
-        ai_enabled BOOLEAN DEFAULT TRUE
+        ai_enabled BOOLEAN DEFAULT TRUE,
+        ai_channel_enabled BOOLEAN DEFAULT 1,
+        ai_channel_mode TEXT DEFAULT 'casual',
+        ai_channel_tokens INTEGER DEFAULT 2000
       )`,
       function (err) {
         if (err) {
