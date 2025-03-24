@@ -21,16 +21,30 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const guildMember = await interaction.guild.members.fetch(
+      interaction.user.id
+    );
     // ✅ Check for the correct role
-    const requiredRoleId = process.env.ELDER_TICKET_MODERATOR_ROLE;
-    if (!interaction.member.roles.cache.has(requiredRoleId)) {
+    const allowedRoles = [
+      process.env.ELDER_TICKET_MODERATOR_ROLE,
+      process.env.ELDEN_MODERATOR,
+      process.env.ELDEN_ENFORCER,
+    ];
+
+    const hasRequiredRole = guildMember.roles.cache.some((role) =>
+      allowedRoles.includes(role.id)
+    );
+
+    if (!hasRequiredRole) {
       return interaction.reply({
-        content: "❌ You do not have permission to change AI settings.",
-        flags: 64, // ephemeral
+        content: "❌ You do not have permission to use this command.",
+        flags: 64,
       });
     }
 
     const selectedMode = interaction.options.getString("mode");
+    const formattedMode =
+      selectedMode.charAt(0).toUpperCase() + selectedMode.slice(1);
 
     db.run(
       `INSERT INTO ai_settings (guild_id, ai_mode) VALUES (?, ?)
@@ -46,7 +60,7 @@ module.exports = {
         }
 
         interaction.reply({
-          content: `✅ AI personality mode has been updated to **${selectedMode}**.`,
+          content: `✅ AI personality mode has been updated to **${formattedMode}**.`,
           flags: 64,
         });
       }

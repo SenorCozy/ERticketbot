@@ -48,11 +48,13 @@ module.exports = {
         // 🚨 Prevent ticket creator from claiming their own ticket unless they are a Ticket Moderator
         if (
           user.id === ticket.user_id &&
-          !guildMember.roles.cache.has(process.env.TICKET_MODERATOR_ROLE)
+          !guildMember.roles.cache.has(process.env.TICKET_MODERATOR_ROLE) &&
+          !guildMember.roles.cache.has(process.env.ELDEN_MODERATOR) &&
+          !guildMember.roles.cache.has(process.env.ELDEN_ENFORCER)
         ) {
           return interaction.reply({
             content:
-              "❌ You cannot claim your own ticket unless you are a Ticket Moderator.",
+              "❌ You cannot claim your own ticket unless you are a Ticket Moderator, Elden Moderator, or Elden Enforcer.",
             flags: 64,
           });
         }
@@ -71,7 +73,7 @@ module.exports = {
           ticketChannel.id,
         ]);
 
-        // Update channel permissions (Only claimer, creator, and moderators can see the ticket)
+        // ✅ Update permissions to include new roles
         await ticketChannel.permissionOverwrites.set([
           {
             id: interaction.guild.id, // @everyone
@@ -94,7 +96,7 @@ module.exports = {
             ],
           },
           {
-            id: process.env.TICKET_MODERATOR_ROLE, // Moderators (always have access)
+            id: process.env.TICKET_MODERATOR_ROLE,
             allow: [
               PermissionsBitField.Flags.ViewChannel,
               PermissionsBitField.Flags.SendMessages,
@@ -102,7 +104,23 @@ module.exports = {
             ],
           },
           {
-            id: interaction.client.user.id, // The bot
+            id: process.env.ELDEN_MODERATOR, // ✅ New role
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          },
+          {
+            id: process.env.ELDEN_ENFORCER, // ✅ New role
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          },
+          {
+            id: interaction.client.user.id, // Bot
             allow: [
               PermissionsBitField.Flags.ViewChannel,
               PermissionsBitField.Flags.SendMessages,

@@ -39,11 +39,22 @@ module.exports = {
       }
 
       // ✅ Ensure the user is a Ticket Moderator
-      if (
-        !interaction.member.roles.cache.has(process.env.TICKET_MODERATOR_ROLE)
-      ) {
+      const guildMember = await interaction.guild.members.fetch(
+        interaction.user.id
+      );
+      const allowedRoles = [
+        process.env.ELDER_TICKET_MODERATOR_ROLE,
+        process.env.ELDEN_MODERATOR,
+        process.env.ELDEN_ENFORCER,
+      ];
+
+      const hasRequiredRole = guildMember.roles.cache.some((role) =>
+        allowedRoles.includes(role.id)
+      );
+
+      if (!hasRequiredRole) {
         return interaction.reply({
-          content: "❌ Only Ticket Moderators can transfer tickets.",
+          content: "❌ You do not have permission to use this command.",
           flags: 64,
         });
       }

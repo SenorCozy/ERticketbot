@@ -43,12 +43,19 @@ module.exports = {
       );
 
       // ✅ Restrict command to Elder Ticket Moderators
-      if (
-        !guildMember.roles.cache.has(process.env.ELDER_TICKET_MODERATOR_ROLE)
-      ) {
+      const allowedRoles = [
+        process.env.ELDER_TICKET_MODERATOR_ROLE,
+        process.env.ELDEN_MODERATOR,
+        process.env.ELDEN_ENFORCER,
+      ];
+
+      const hasRequiredRole = guildMember.roles.cache.some((role) =>
+        allowedRoles.includes(role.id)
+      );
+
+      if (!hasRequiredRole) {
         return interaction.reply({
-          content:
-            "❌ You need the **Elder Ticket Moderator** role to use this command.",
+          content: "❌ You do not have permission to use this command.",
           flags: 64,
         });
       }

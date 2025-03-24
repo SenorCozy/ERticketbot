@@ -14,14 +14,22 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const member = await interaction.guild.members.fetch(interaction.user.id);
-
-    // ✅ Check if the user has the required role
-    const hasModRole = member.roles.cache.has(
-      process.env.ELDER_TICKET_MODERATOR_ROLE
+    const guildMember = await interaction.guild.members.fetch(
+      interaction.user.id
     );
 
-    if (!hasModRole) {
+    // ✅ Check if the user has the required role
+    const allowedRoles = [
+      process.env.ELDER_TICKET_MODERATOR_ROLE,
+      process.env.ELDEN_MODERATOR,
+      process.env.ELDEN_ENFORCER,
+    ];
+
+    const hasRequiredRole = guildMember.roles.cache.some((role) =>
+      allowedRoles.includes(role.id)
+    );
+
+    if (!hasRequiredRole) {
       return interaction.reply({
         content: "❌ You do not have permission to use this command.",
         flags: 64,

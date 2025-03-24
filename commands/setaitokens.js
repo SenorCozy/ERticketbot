@@ -26,11 +26,23 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const guildMember = await interaction.guild.members.fetch(
+      interaction.user.id
+    );
     // ✅ Use ELDER_TICKET_MODERATOR_ROLE from .env
-    const requiredRoleId = process.env.ELDER_TICKET_MODERATOR_ROLE;
-    if (!interaction.member.roles.cache.has(requiredRoleId)) {
+    const allowedRoles = [
+      process.env.ELDER_TICKET_MODERATOR_ROLE,
+      process.env.ELDEN_MODERATOR,
+      process.env.ELDEN_ENFORCER,
+    ];
+
+    const hasRequiredRole = guildMember.roles.cache.some((role) =>
+      allowedRoles.includes(role.id)
+    );
+
+    if (!hasRequiredRole) {
       return interaction.reply({
-        content: "❌ You do not have permission to change AI settings.",
+        content: "❌ You do not have permission to use this command.",
         flags: 64,
       });
     }

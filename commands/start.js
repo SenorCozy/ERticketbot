@@ -23,10 +23,20 @@ module.exports = {
     );
 
     // ✅ Restrict access to users with the "Ticket Moderator" role
-    if (!guildMember.roles.cache.has(process.env.TICKET_MODERATOR_ROLE)) {
+    const allowedRoles = [
+      process.env.ELDER_TICKET_MODERATOR_ROLE,
+      process.env.ELDEN_MODERATOR,
+      process.env.ELDEN_ENFORCER,
+    ];
+
+    const hasRequiredRole = guildMember.roles.cache.some((role) =>
+      allowedRoles.includes(role.id)
+    );
+
+    if (!hasRequiredRole) {
       return interaction.reply({
-        content: "❌ You need the 'Ticket Moderator' role to use this command.",
-        flags: 64, // Ephemeral message
+        content: "❌ You do not have permission to use this command.",
+        flags: 64,
       });
     }
 

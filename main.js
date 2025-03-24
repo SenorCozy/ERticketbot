@@ -55,18 +55,25 @@ if (fs.existsSync(lockFile)) {
 fs.writeFileSync(lockFile, process.pid.toString());
 
 // Clean up the lock file on exit
-process.on("exit", () => fs.unlinkSync(lockFile));
-process.on("SIGINT", () => process.exit(0));
+process.on("exit", () => {
+  if (fs.existsSync("./bot.lock")) {
+    fs.unlinkSync("./bot.lock");
+  }
+});
+
+process.on("SIGINT", () => process.exit());
+process.on("SIGTERM", () => process.exit());
+
 process.on("uncaughtException", (err) => {
   console.error("❌ Uncaught Exception:", err);
-  fs.unlinkSync(lockFile);
   process.exit(1);
 });
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
-  fs.unlinkSync(lockFile);
+
+process.on("unhandledRejection", (reason) => {
+  console.error("❌ Unhandled Rejection at:", reason);
   process.exit(1);
 });
+
 const {
   ActionRowBuilder,
   ButtonBuilder,

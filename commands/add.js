@@ -85,7 +85,14 @@ module.exports = {
                 flags: 64,
               });
             }
-
+            //Check if they already have access
+            const perms = ticketChannel.permissionsFor(newHelper.id);
+            if (perms?.has(PermissionsBitField.Flags.ViewChannel)) {
+              return interaction.reply({
+                content: "⚠️ This user already has access to the ticket.",
+                flags: 64,
+              });
+            }
             try {
               // Add the new helper to the ticket
               await ticketChannel.permissionOverwrites.edit(newHelper.id, {

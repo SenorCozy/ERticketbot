@@ -67,7 +67,9 @@ module.exports = {
           // Ensure only the claimer or a Ticket Moderator can unclaim
           if (
             ticket.claimed_by !== user.id &&
-            !guildMember.roles.cache.has(process.env.TICKET_MODERATOR_ROLE)
+            !guildMember.roles.cache.has(process.env.TICKET_MODERATOR_ROLE) &&
+            !guildMember.roles.cache.has(process.env.ELDEN_MODERATOR) &&
+            !guildMember.roles.cache.has(process.env.ELDEN_ENFORCER)
           ) {
             return interaction.reply({
               content:
@@ -113,6 +115,22 @@ module.exports = {
                 },
                 {
                   id: process.env.TICKET_MODERATOR_ROLE, // Moderators always have access
+                  allow: [
+                    PermissionsBitField.Flags.ViewChannel,
+                    PermissionsBitField.Flags.SendMessages,
+                    PermissionsBitField.Flags.ReadMessageHistory,
+                  ],
+                },
+                {
+                  id: process.env.ELDEN_MODERATOR, // ✅ New role
+                  allow: [
+                    PermissionsBitField.Flags.ViewChannel,
+                    PermissionsBitField.Flags.SendMessages,
+                    PermissionsBitField.Flags.ReadMessageHistory,
+                  ],
+                },
+                {
+                  id: process.env.ELDEN_ENFORCER, // ✅ New role
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,

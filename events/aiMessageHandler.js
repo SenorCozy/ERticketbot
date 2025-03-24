@@ -335,4 +335,5 @@ module.exports = {
       console.error("❌ Error in AI chat handler:", err);
     }
   },
+  cooldowns,
 };

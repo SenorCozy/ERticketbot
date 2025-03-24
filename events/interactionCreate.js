@@ -454,6 +454,22 @@ module.exports = {
                         ],
                       },
                       {
+                        id: process.env.ELDEN_MODERATOR, // ✅ New role
+                        allow: [
+                          PermissionsBitField.Flags.ViewChannel,
+                          PermissionsBitField.Flags.SendMessages,
+                          PermissionsBitField.Flags.ReadMessageHistory,
+                        ],
+                      },
+                      {
+                        id: process.env.ELDEN_ENFORCER, // ✅ New role
+                        allow: [
+                          PermissionsBitField.Flags.ViewChannel,
+                          PermissionsBitField.Flags.SendMessages,
+                          PermissionsBitField.Flags.ReadMessageHistory,
+                        ],
+                      },
+                      {
                         id: interaction.client.user.id, // The bot
                         allow: [
                           PermissionsBitField.Flags.ViewChannel,
@@ -551,6 +567,22 @@ module.exports = {
                 },
                 {
                   id: ticketModRole.id, // Moderators always have access
+                  allow: [
+                    PermissionsBitField.Flags.ViewChannel,
+                    PermissionsBitField.Flags.SendMessages,
+                    PermissionsBitField.Flags.ReadMessageHistory,
+                  ],
+                },
+                {
+                  id: process.env.ELDEN_MODERATOR, // ✅ New role
+                  allow: [
+                    PermissionsBitField.Flags.ViewChannel,
+                    PermissionsBitField.Flags.SendMessages,
+                    PermissionsBitField.Flags.ReadMessageHistory,
+                  ],
+                },
+                {
+                  id: process.env.ELDEN_ENFORCER, // ✅ New role
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -1058,6 +1090,22 @@ async function createTicketChannel(guild, user, client, interaction) {
           PermissionsBitField.Flags.SendMessages,
           PermissionsBitField.Flags.ReadMessageHistory,
           PermissionsBitField.Flags.ManageChannels,
+        ],
+      },
+      {
+        id: process.env.ELDEN_MODERATOR, // ✅ New role
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      },
+      {
+        id: process.env.ELDEN_ENFORCER, // ✅ New role
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
         ],
       },
       {
