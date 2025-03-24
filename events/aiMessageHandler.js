@@ -276,7 +276,16 @@ module.exports = {
                         responseTime,
                         true,
                         null,
-                      ]
+                      ],
+                      (err) => {
+                        if (err) {
+                          console.error(
+                            "❌ Failed to insert AI log:",
+                            err.message
+                          );
+                          // You can optionally log this to a separate fallback log table if needed.
+                        }
+                      }
                     );
                   } catch (apiError) {
                     console.error("❌ OpenRouter API error:", apiError);
@@ -359,19 +368,30 @@ module.exports = {
                           message.guild.id,
                           ticket.id,
                           promptLength,
-                          modelUsedFallback,
-                          true,
+                          modelUsedPrimary,
+                          false,
                           estimatedTokens,
                           responseTime,
                           true,
                           null,
-                        ]
+                        ],
+                        (err) => {
+                          if (err) {
+                            console.error(
+                              "❌ Failed to insert AI log:",
+                              err.message
+                            );
+                            // You can optionally log this to a separate fallback log table if needed.
+                          }
+                        }
                       );
                     } catch (fallbackError) {
                       console.error("❌ Error in AI fallback:", fallbackError);
+
                       await thinkingMessage.edit(
                         "⚠️ AI is struggling to reply right now."
                       );
+
                       const totalTime = Date.now() - startTime;
 
                       db.run(
@@ -390,7 +410,15 @@ module.exports = {
                           totalTime,
                           false,
                           fallbackError.message || "Unknown fallback error",
-                        ]
+                        ],
+                        (err) => {
+                          if (err) {
+                            console.error(
+                              "❌ Failed to insert fallback AI log:",
+                              err.message
+                            );
+                          }
+                        }
                       );
                     }
                   }
