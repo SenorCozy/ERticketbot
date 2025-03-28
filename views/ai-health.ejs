@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI Health Logs</title>
+    <link rel="stylesheet" href="/ai-health.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+
+  <body>
+    <div class="container">
+      <h1>🧠 Full AI Health Overview</h1>
+      <p style="text-align: center">
+        Welcome, <strong><%= user.username %></strong>
+      </p>
+
+      <!-- 🔢 Summary Info -->
+      <div class="summary-box">
+        <div><strong>Total Logs:</strong> <%= logs.length %></div>
+        <div><strong>Last Entry:</strong> <%= logs[0] ? new Date(logs[0].timestamp).toLocaleString() : 'N/A' %></div>
+      </div>
+
+      <!-- 📈 Chart Placeholders -->
+      <div class="charts">
+        <canvas id="successRateChart"></canvas>
+        <canvas id="fallbackRateChart"></canvas>
+      </div>
+
+      <!-- 📝 Log Table -->
+      <h2>Recent AI Logs</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>User ID</th>
+              <th>Context</th>
+              <th>Model</th>
+              <th>Prompt Length</th>
+              <th>Time (ms)</th>
+              <th>Success</th>
+              <th>Fallback</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% logs.forEach(log => { %>
+              <tr>
+                <td><%= new Date(log.timestamp).toLocaleString() %></td>
+                <td><%= log.user_id %></td>
+                <td><%= String(log.ticket_id).startsWith("ai_channel") ? "AI Chat" : "Ticket" %></td>
+                <td><%= log.model_used %></td>
+                <td><%= log.prompt_length %></td>
+                <td><%= log.response_time_ms %></td>
+                <td><%= log.success ? "✅" : "❌" %></td>
+                <td><%= log.fallback_used ? "🔁" : "—" %></td>
+                <td><%= log.error_message || "—" %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="text-align: center; margin-top: 20px;">
+        <a href="/dashboard" class="transcript-view">⬅️ Back to Dashboard</a>
+      </p>
+    </div>
+    <script>
+        const successCount = <%= successCount %>;
+        const failCount = <%= failCount %>;
+        const fallbackCount = <%= fallbackCount %>;
+        const directSuccessCount = <%= directSuccessCount %>;
+      
+        const ctx1 = document.getElementById('successRateChart').getContext('2d');
+        const ctx2 = document.getElementById('fallbackRateChart').getContext('2d');
+      
+        new Chart(ctx1, {
+          type: 'doughnut',
+          data: {
+            labels: ['Success', 'Failure'],
+            datasets: [{
+              label: 'Success Rate',
+              data: [successCount, failCount],
+              backgroundColor: ['#22c55e', '#ef4444'],
+            }]
+          }
+        });
+      
+        new Chart(ctx2, {
+          type: 'doughnut',
+          data: {
+            labels: ['Fallback Used', 'Direct Success'],
+            datasets: [{
+              label: 'Fallback Rate',
+              data: [fallbackCount, directSuccessCount],
+              backgroundColor: ['#facc15', '#60a5fa'],
+            }]
+          }
+        });
+      </script>
+      
+  
+  </body>
+</html>

@@ -43,12 +43,14 @@ module.exports = {
     // ✅ Create the ticket embed & button
     const embed = new EmbedBuilder()
       .setColor(0x0099ff)
-      .setTitle("Need Help?")
-      .setDescription("Click the button below to open a game request ticket.");
+      .setTitle("Need Help With a Boss or an Area?")
+      .setDescription(
+        "Click the button below to open a game request ticket and our Elden Ring Helpers will be happy to assist!"
+      );
 
     const createTicketButton = new ButtonBuilder()
       .setCustomId("create_ticket")
-      .setLabel("Open Ticket")
+      .setLabel("Open Game Help Ticket")
       .setStyle(ButtonStyle.Primary);
 
     const row = new ActionRowBuilder().addComponents(createTicketButton);

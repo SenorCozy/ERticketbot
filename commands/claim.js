@@ -120,12 +120,30 @@ module.exports = {
             ],
           },
           {
+            id: process.env.REPUTATION_BOT, // ✅ New role
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          },
+
+          {
+            id: process.env.BOTS, // ✅ New role
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          },
+          {
             id: interaction.client.user.id, // Bot
             allow: [
               PermissionsBitField.Flags.ViewChannel,
               PermissionsBitField.Flags.SendMessages,
               PermissionsBitField.Flags.ManageChannels,
               PermissionsBitField.Flags.ReadMessageHistory,
+              PermissionsBitField.Flags.ManageMessages,
             ],
           },
         ]);

@@ -104,6 +104,9 @@ module.exports = {
               await interaction.reply({
                 content: `✅ <@${newHelper.id}> has been added to this claimed ticket.`,
               });
+              await ticketChannel.send(
+                `👋 Welcome <@${newHelper.id}>! You’ve been added to this claimed ticket.`
+              );
             } catch (permError) {
               console.error("❌ Error updating permissions:", permError);
               return interaction.reply({

@@ -137,30 +137,37 @@ client.on("messageCreate", async (message) => {
       if (hasThankYou && hasMention) {
         console.log("🔵 Detected possible rep message:", message.content);
 
-        // Wait 10 seconds to check if another bot added rep reactions
         setTimeout(async () => {
           try {
             const updatedMessage = await message.channel.messages.fetch(
               message.id
             );
 
-            if (
+            const hasReactions =
               updatedMessage.reactions.cache.has("👀") &&
-              updatedMessage.reactions.cache.has("✅")
-            ) {
-              console.log("🟢 Confirmed rep message with reactions.");
+              updatedMessage.reactions.cache.has("✅");
 
-              // Create "Undo Rep" button
-              const undoRepButton = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                  .setCustomId(`undo_rep_${message.id}`)
-                  .setLabel("Undo Rep")
-                  .setStyle(ButtonStyle.Danger)
-              );
+            if (!hasReactions) return;
 
-              // Ask user if rep was intentional
+            console.log("🟢 Confirmed rep message with reactions.");
+
+            const undoRepButton = new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`undo_rep_${message.id}`)
+                .setLabel("Undo Rep")
+                .setStyle(ButtonStyle.Danger)
+            );
+
+            const mentionCount = message.mentions.users.size;
+
+            if (mentionCount === 1) {
               await message.reply({
                 content: `🔍 **Did you mean to give rep?** If not, click below to undo it.`,
+                components: [undoRepButton],
+              });
+            } else if (mentionCount >= 2) {
+              await message.reply({
+                content: `⚠️ **Did you mean to give rep to more than one player?**\nMost tickets are only eligible for one rep per person per ticket unless this is a specific \`!doubles\` DLC boss or at handler discretion.\n\nClick the button below to remove the rep if needed.`,
                 components: [undoRepButton],
               });
             }
@@ -170,7 +177,7 @@ client.on("messageCreate", async (message) => {
               fetchError
             );
           }
-        }, 10000);
+        }, 3200);
       }
     }
   );
@@ -297,7 +304,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
           }
 
           // ✅ Generate transcript URL
-          const transcriptUrl = `${process.env.TRANSCRIPT_BASE_URL}/transcripts/${transcriptId}`;
+          const transcriptUrl = `${process.env.TRANSCRIPT_BASE_URL}/${transcriptId}`;
 
           // ✅ Format timestamps
           const formatTimestamp = (isoString) =>
@@ -747,6 +754,38 @@ app.get(
           }
         );
       });
+      // ✅ Fetch AI stats for snapshot
+      const aiStats = await new Promise((resolve) => {
+        db.get(
+          `SELECT 
+      COUNT(*) as total_prompts,
+      AVG(prompt_length) as avg_prompt_length,
+      AVG(response_time_ms) as avg_response_time_ms,
+      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate,
+      SUM(CASE WHEN fallback_used = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as fallback_rate
+    FROM ai_logs`,
+          (err, row) => {
+            if (err) {
+              console.error("❌ Error fetching AI stats:", err);
+              resolve({
+                total_prompts: 0,
+                avg_prompt_length: 0,
+                avg_response_time_ms: 0,
+                success_rate: 0,
+                fallback_rate: 0,
+              });
+            } else {
+              resolve({
+                total_prompts: row.total_prompts,
+                avg_prompt_length: Math.round(row.avg_prompt_length || 0),
+                avg_response_time_ms: Math.round(row.avg_response_time_ms || 0),
+                success_rate: (row.success_rate || 0).toFixed(1),
+                fallback_rate: (row.fallback_rate || 0).toFixed(1),
+              });
+            }
+          }
+        );
+      });
 
       // ✅ Fetch recent transcripts
       const transcripts = await new Promise((resolve, reject) => {
@@ -767,11 +806,50 @@ app.get(
         transcripts,
         botAvatar,
         botName,
+        aiStats,
       });
     } catch (error) {
       console.error("❌ Error loading dashboard:", error);
       res.redirect("/auth/discord");
     }
+  }
+);
+
+//ai-health route
+
+app.get(
+  "/ai-health",
+  ensureAuthenticated,
+  checkModeratorRole,
+  async (req, res) => {
+    db.all(
+      `SELECT 
+      id, user_id, ticket_id, model_used, fallback_used,
+      prompt_length, response_time_ms, success, error_message, tokens_estimated,
+      timestamp
+     FROM ai_logs
+     ORDER BY timestamp DESC LIMIT 100`,
+      (err, logs) => {
+        if (err) {
+          console.error("❌ Error loading AI health logs:", err);
+          return res.status(500).send("Internal error");
+        }
+
+        const successCount = logs.filter((log) => log.success).length;
+        const failCount = logs.length - successCount;
+        const fallbackCount = logs.filter((log) => log.fallback_used).length;
+        const directSuccessCount = logs.length - fallbackCount;
+
+        res.render("ai-health", {
+          user: req.user,
+          logs,
+          successCount,
+          failCount,
+          fallbackCount,
+          directSuccessCount,
+        });
+      }
+    );
   }
 );
 
@@ -1172,7 +1250,7 @@ app.post("/close/:id", async (req, res) => {
               );
               if (logChannel) {
                 try {
-                  const transcriptUrl = `${process.env.TRANSCRIPT_BASE_URL}/transcripts/${transcriptId}`;
+                  const transcriptUrl = `${process.env.TRANSCRIPT_BASE_URL}/${transcriptId}`;
                   await logChannel.send({
                     embeds: [
                       new EmbedBuilder()
@@ -1276,7 +1354,7 @@ app.post("/close/:id", async (req, res) => {
 
 //helper functions
 
-async function checkIdleTickets() {
+async function checkIdleTickets(client) {
   const THIRTY_MINUTES = 30 * 60 * 1000; // 30 minutes in milliseconds
   const now = Date.now();
 
@@ -1289,10 +1367,16 @@ async function checkIdleTickets() {
       }
 
       for (const ticket of tickets) {
-        const lastActivity = new Date(ticket.last_activity).getTime();
+        const lastActivity = ticket.last_activity
+          ? new Date(ticket.last_activity).getTime()
+          : 0;
+
         const lastReminderSent = ticket.last_reminder_sent
           ? new Date(ticket.last_reminder_sent).getTime()
           : 0;
+        if (tickets.length === 0) {
+          console.log("ℹ️ No open tickets to check.");
+        }
 
         // Check if the ticket has been idle for 30 minutes AND no reminder has been sent in the last 30 minutes
         if (
@@ -1336,7 +1420,15 @@ async function checkIdleTickets() {
 }
 
 // Run the check every 5 minutes
-setInterval(checkIdleTickets, 5 * 60 * 1000);
+client.once("ready", async () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+
+  // Call it once immediately on startup
+  checkIdleTickets(client);
+
+  // Then run it every 5 minutes
+  setInterval(() => checkIdleTickets(client), 5 * 60 * 1000);
+});
 
 // ✅ Fetch All Messages from a Channel
 async function fetchAllMessages(channel) {

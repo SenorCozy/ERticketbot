@@ -94,6 +94,23 @@ module.exports = {
             "No reason provided";
           const closedBy = interaction.user;
 
+          // Restrict users without Active Helper role from directly closing
+          const member = interaction.guild.members.cache.get(closedBy.id);
+          const isHelper = member.roles.cache.has(
+            process.env.ACTIVE_HELPER_ROLE
+          );
+          const isMod = member.roles.cache.has(
+            process.env.TICKET_MODERATOR_ROLE
+          );
+
+          if (!isHelper && !isMod) {
+            return interaction.reply({
+              content:
+                "❌ You don’t have permission to close this ticket directly.\nPlease ask an Active Helper or Ticket Handler to close it for you.",
+              flags: 64,
+            });
+          }
+
           // Fetch ticket details
           db.get(
             "SELECT * FROM tickets WHERE channel_id = ?",
@@ -206,7 +223,7 @@ module.exports = {
               }
 
               // ✅ Generate transcript URL
-              const transcriptUrl = `${process.env.TRANSCRIPT_BASE_URL}/transcripts/${transcriptId}`;
+              const transcriptUrl = `${process.env.TRANSCRIPT_BASE_URL}/${transcriptId}`;
 
               // ✅ Format timestamps
               const formatTimestamp = (isoString) =>
@@ -470,12 +487,29 @@ module.exports = {
                         ],
                       },
                       {
+                        id: process.env.REPUTATION_BOT, // ✅ New role
+                        allow: [
+                          PermissionsBitField.Flags.ViewChannel,
+                          PermissionsBitField.Flags.SendMessages,
+                          PermissionsBitField.Flags.ReadMessageHistory,
+                        ],
+                      },
+                      {
+                        id: process.env.BOTS, // ✅ New role
+                        allow: [
+                          PermissionsBitField.Flags.ViewChannel,
+                          PermissionsBitField.Flags.SendMessages,
+                          PermissionsBitField.Flags.ReadMessageHistory,
+                        ],
+                      },
+                      {
                         id: interaction.client.user.id, // The bot
                         allow: [
                           PermissionsBitField.Flags.ViewChannel,
                           PermissionsBitField.Flags.SendMessages,
                           PermissionsBitField.Flags.ManageChannels,
                           PermissionsBitField.Flags.ReadMessageHistory,
+                          PermissionsBitField.Flags.ManageMessages,
                         ],
                       },
                     ]);
@@ -590,12 +624,21 @@ module.exports = {
                   ],
                 },
                 {
+                  id: process.env.BOTS, // ✅ New role
+                  allow: [
+                    PermissionsBitField.Flags.ViewChannel,
+                    PermissionsBitField.Flags.SendMessages,
+                    PermissionsBitField.Flags.ReadMessageHistory,
+                  ],
+                },
+                {
                   id: interaction.client.user.id, // The bot
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
                     PermissionsBitField.Flags.ManageChannels,
                     PermissionsBitField.Flags.ReadMessageHistory,
+                    PermissionsBitField.Flags.ManageMessages,
                   ],
                 },
               ]);
@@ -615,14 +658,12 @@ module.exports = {
         // Handle undo rep/remove rep button
         else if (interaction.customId.startsWith("undo_rep_")) {
           console.log("🔴 Undo Rep button clicked");
-
-          await interaction.deferReply(); // ✅ Acknowledge interaction immediately
+          await interaction.deferReply();
 
           const messageId = interaction.customId.split("_")[2];
           const channel = interaction.channel;
 
           try {
-            // ✅ Fetch the original message
             const targetMessage = await channel.messages.fetch(messageId);
 
             if (!targetMessage) {
@@ -631,35 +672,44 @@ module.exports = {
               });
             }
 
-            // ✅ Ensure only the author, mentioned user, or a moderator can undo
+            // ✅ Allow override for these roles
+            const bypassRoles = [
+              process.env.TICKET_MODERATOR_ROLE,
+              process.env.ELDEN_MODERATOR,
+              process.env.ELDEN_ENFORCER,
+            ];
+
+            const hasBypass = interaction.member.roles.cache.some((role) =>
+              bypassRoles.includes(role.id)
+            );
+
+            // ✅ Allow author, mentioned user, or bypass
             const mentionedUsers = targetMessage.mentions.users.map(
               (user) => user.id
             );
             const hasPermission =
               interaction.user.id === targetMessage.author.id ||
               mentionedUsers.includes(interaction.user.id) ||
-              interaction.member.roles.cache.has(
-                process.env.TICKET_MODERATOR_ROLE
-              );
+              hasBypass;
 
             if (!hasPermission) {
               return interaction.followUp({
                 content: "❌ You do not have permission to undo this rep.",
+                ephemeral: true,
               });
             }
 
-            // ✅ Remove rep reactions
-            await targetMessage.reactions.cache.get("👀")?.remove();
-            await targetMessage.reactions.cache.get("✅")?.remove();
+            // ✅ Delete the rep message
+            await targetMessage.delete();
 
             await interaction.followUp({
-              content: "✅ The rep has been removed.",
+              content: "🗑️ The rep message has been deleted.",
             });
           } catch (error) {
-            console.error("❌ Error removing reactions:", error);
+            console.error("❌ Error deleting message:", error);
             return interaction.editReply({
               content:
-                "Failed to undo rep. Please tag ticket handlers for assistance.",
+                "Failed to undo rep. Please tag ticket handlers for help.",
             });
           }
         }
@@ -867,12 +917,18 @@ async function createPlatformTicket(interaction, client) {
           });
         }
 
-        // ✅ Send ticket embed & buttons
         await sendTicketEmbed(
           ticketChannel,
           ticketCreator,
           platformHelperRoleId
         );
+        // ⏳ Wait 5 seconds before sending the reminder
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        // 🔔 Send the follow-up reminder message
+        await ticketChannel.send({
+          content: `💡 **Reminder:** Please remember to **thank your helper** after your request is complete!\nMention them using \`@username\` and include the word **"thank you"** in the same message. This helps them gain reputation and unlock new roles! 🎖️`,
+        });
 
         // ✅ Notify the user
         return interaction.editReply({
@@ -1020,27 +1076,36 @@ async function sendTicketEmbed(ticketChannel, user, platformHelperRoleId) {
       .setColor(0xff0000)
       .setTitle("🛡️ Elden Ring Boss Help Ticket")
       .setDescription(
-        `Hello <@${user.id}>, a <@&${platformHelperRoleId}> will assist you shortly. Please provide the following details:
-        
-🔹 **What do you need help with?**  
-   - 🎮 Which **boss**, **area**, or **other assistance** you need.
-
-🔹 **Game Details (Please Provide):**  
-   - 🌎 **Region & Character Level**  
-   - 🌿 **Scadutree Blessing** _(Required for DLC assistance)_  
-   - 🔄 **NG+ Level (Game Cycle)**  
-
-🔹 **Multiplayer Settings:**  
-   - ⚙️ **Enable Cross-Region Play:** Set *"Cross-Region Play"* to *"Perform Matchmaking"* in *System Settings > Network Tab*.  
-   - 🔑 **Use an In-Game Password:** Your helper will provide one.  
-   - 📝 **Passwords are case-sensitive** → Enter in *"Multiplayer Password"* under *Multiplayer Menu*.  
-
-🔹 **After you’ve been helped:**  
-   - 🏆 **Thank your helper** by mentioning them **(\`@username\`) in this ticket and saying thanks (otherwise they don't get credit!).**  
-   - 💬 Say **"thank you"** in the same message → This helps them **gain ranks and unlock new roles!** 🎖️  
-
-⚠️ *Please follow these steps for smooth assistance.*`
+        `Hello <@${user.id}>, a <@&${platformHelperRoleId}> will assist you shortly. Please include the following:
+      
+      🔹 **What do you need help with?**  
+      → Boss name, area, or type of assistance.
+      
+      🔹 **Game Info:**  
+      • Region & Character Level  
+      • Scadutree Blessing (for DLC help)  
+      • NG+ Level
+      
+      🔹 **Multiplayer Setup:**  
+      • Cross-Region: *Perform Matchmaking*  
+      • In-Game Password (will be provided)  
+      • Passwords are case-sensitive
+      
+      🔹 **After Help:**  
+      Mention your helper **(@username)** in this ticket  
+      and say **"thank you"** in the same message  
+      → This gives them rep & unlocks new roles! 🎖️
+      
+      📌 **Example:**  
+      \`\`\`
+      Jhosenpai: PC, need help with Godskin Duo, level 118, Scadutree Blessing 4, NG+1.
+      \`\`\`
+      > After help:  
+      Jhosenpai: thanks @helper_name.
+      
+      ⚠️ Please follow these steps for faster assistance.`
       )
+
       .setFooter({
         text: "🔹 The buttons below are for Active Helpers to manage this ticket.",
       });
@@ -1109,12 +1174,29 @@ async function createTicketChannel(guild, user, client, interaction) {
         ],
       },
       {
+        id: process.env.REPUTATION_BOT, // ✅ New role
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      },
+      {
+        id: process.env.BOTS, // ✅ New role
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      },
+      {
         id: client.user.id, // The bot
         allow: [
           PermissionsBitField.Flags.ViewChannel,
           PermissionsBitField.Flags.SendMessages,
           PermissionsBitField.Flags.ManageChannels,
           PermissionsBitField.Flags.ReadMessageHistory,
+          PermissionsBitField.Flags.ManageMessages,
         ],
       },
     ],

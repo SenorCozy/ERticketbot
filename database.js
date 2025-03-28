@@ -167,13 +167,16 @@ function initializeTables() {
     db.run(
       `CREATE TABLE IF NOT EXISTS ai_settings (
         guild_id TEXT PRIMARY KEY,
-        ai_mode TEXT DEFAULT 'professional',
-        max_tokens INTEGER DEFAULT 50000,
-        ignore_token_limit BOOLEAN DEFAULT FALSE,
-        ai_enabled BOOLEAN DEFAULT TRUE,
-        ai_channel_enabled BOOLEAN DEFAULT 1,
-        ai_channel_mode TEXT DEFAULT 'casual',
-        ai_channel_tokens INTEGER DEFAULT 2000
+    
+        ticket_ai_enabled BOOLEAN DEFAULT TRUE,
+        ticket_ai_mode TEXT DEFAULT 'professional',
+        ticket_ai_max_tokens INTEGER DEFAULT 50000,
+    
+        ai_chat_enabled BOOLEAN DEFAULT TRUE,
+        ai_chat_mode TEXT DEFAULT 'casual',
+        ai_chat_max_tokens INTEGER DEFAULT 2000,
+    
+        ignore_token_limit BOOLEAN DEFAULT FALSE
       )`,
       function (err) {
         if (err) {
@@ -191,7 +194,8 @@ function initializeTables() {
         ticket_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        user_id TEXT
       )`,
       function (err) {
         if (err) {

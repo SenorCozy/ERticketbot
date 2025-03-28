@@ -43,9 +43,11 @@ module.exports = {
         interaction.user.id
       );
       const allowedRoles = [
-        process.env.ELDER_TICKET_MODERATOR_ROLE,
+        process.env.TICKET_MODERATOR_ROLE,
         process.env.ELDEN_MODERATOR,
         process.env.ELDEN_ENFORCER,
+        process.env.REPUTATION_BOT,
+        process.env.BOTS,
       ];
 
       const hasRequiredRole = guildMember.roles.cache.some((role) =>

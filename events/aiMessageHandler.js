@@ -48,7 +48,7 @@ module.exports = {
 
       // ✅ Already validated it's a relevant AI message, now check DB and channel
       db.get(
-        "SELECT ai_enabled FROM ai_settings WHERE guild_id = ?",
+        `SELECT ticket_ai_enabled, ai_chat_enabled FROM ai_settings WHERE guild_id = ?`,
         [message.guild.id],
         async (err, settings) => {
           if (err) {
@@ -56,10 +56,13 @@ module.exports = {
             return;
           }
 
-          console.log("🔍 AI settings:", settings);
+          if (!settings) {
+            console.log("⚠️ No AI settings found for this guild.");
+            return;
+          }
 
-          if (settings && !settings.ai_enabled) {
-            console.log("🔴 AI is disabled for this guild.");
+          if (!settings.ticket_ai_enabled && !settings.ai_chat_enabled) {
+            console.log("🔴 Both AI Chat and Ticket AI are disabled.");
             return;
           }
 
@@ -104,7 +107,7 @@ module.exports = {
 
               // **API Rate Limiting: 5 seconds between API calls**
               const lastApiCall = apiRateLimiter.get("global");
-              if (lastApiCall && now - lastApiCall < 5000) {
+              if (lastApiCall && now - lastApiCall < 2000) {
                 await message.reply(
                   "⚠️ The AI is processing too many requests. Please wait a moment."
                 );
@@ -112,7 +115,7 @@ module.exports = {
               }
               apiRateLimiter.set("global", now);
 
-              // ✅ Send an immediate "thinking" message
+              // Send an immediate "thinking" message
               const thinkingMessage = await message.reply({
                 content: "💭 Thinking...",
               });
@@ -120,19 +123,17 @@ module.exports = {
               // Fetch AI settings for both chat and ticket AI modes
               db.get(
                 `SELECT 
-    ai_chat_enabled, ai_chat_mode, ai_chat_max_tokens,
-    ticket_ai_enabled, ticket_ai_mode, ticket_ai_max_tokens,
-    ignore_token_limit
-  FROM ai_settings WHERE guild_id = ?`,
+                  ticket_ai_enabled, ticket_ai_mode, ticket_ai_max_tokens,
+                  ai_chat_enabled, ai_chat_mode, ai_chat_max_tokens,
+                  ignore_token_limit
+                FROM ai_settings WHERE guild_id = ?`,
                 [message.guild.id],
                 async (settingsErr, settings) => {
                   if (settingsErr) {
-                    console.error(
-                      "❌ Error fetching AI settings:",
-                      settingsErr
+                    console.error("❌ DB error:", settingsErr);
+                    return await thinkingMessage.edit(
+                      "⚠️ Error loading AI settings."
                     );
-                    await thinkingMessage.edit("⚠️ Error loading AI settings.");
-                    return;
                   }
 
                   const isChat = isAllowedAIChannel && !isValidTicket;
@@ -205,34 +206,65 @@ module.exports = {
                   const promptLength = prompt.length;
                   const estimatedTokens = Math.round(promptLength / 4);
                   const startTime = Date.now();
+                  // 🧠 Dual-memory fetch block: per-user vs per-thread
                   const ticketId =
                     ticket?.id || `ai_channel_${message.channel.id}`;
+                  const userId = message.author.id;
 
-                  // Fetch conversation history for this ticket with relevance filtering
+                  // Keyword-based toggle for user memory (fallbacks to ticket memory)
+                  const isUserScope = prompt
+                    .toLowerCase()
+                    .includes("you and i");
+
+                  const historyQuery = isUserScope
+                    ? "SELECT role, content FROM conversation_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 20"
+                    : "SELECT role, content FROM conversation_history WHERE ticket_id = ? ORDER BY timestamp DESC LIMIT 20";
+
+                  const historyParam = isUserScope ? userId : ticketId;
+                  const historyContextLabel = isUserScope
+                    ? "Here's what you and this user have previously discussed:"
+                    : "Here's recent discussion in this thread:";
+
                   const history = await new Promise((resolve, reject) => {
-                    db.all(
-                      "SELECT role, content FROM conversation_history WHERE ticket_id = ? ORDER BY timestamp DESC LIMIT 10",
-                      [ticket.id],
-                      (err, rows) => {
-                        if (err) reject(err);
-                        else {
-                          // Filter out irrelevant messages
-                          const relevantHistory = rows.filter((row) =>
-                            isRelevant(row.content)
-                          );
-                          resolve(relevantHistory.reverse()); // Reverse to maintain chronological order
-                        }
+                    db.all(historyQuery, [historyParam], (err, rows) => {
+                      if (err) reject(err);
+                      else {
+                        const validRoles = new Set(["user", "assistant"]);
+                        const relevantHistory = rows
+                          .filter((row) => row.content?.trim().length > 0)
+                          .filter((row) => isRelevant(row.content))
+                          .filter((row) => validRoles.has(row.role));
+                        resolve(relevantHistory.reverse());
                       }
-                    );
+                    });
                   });
 
-                  console.log("🟢 Conversation history:", history);
+                  // Token-aware trimming (estimates 4 chars = 1 token)
+                  let totalTokens = Math.round(prompt.length / 4);
+                  const maxTokensAllowed = 160000 - 5000;
+                  const trimmedHistory = [];
 
-                  // Add the current prompt to the history
-                  db.run(
-                    "INSERT INTO conversation_history (ticket_id, role, content) VALUES (?, ?, ?)",
-                    [ticket.id, "user", prompt]
+                  for (const msg of history.reverse()) {
+                    const estimated = Math.round(msg.content.length / 4);
+                    if (totalTokens + estimated > maxTokensAllowed) break;
+                    trimmedHistory.unshift(msg);
+                    totalTokens += estimated;
+                  }
+
+                  // ✅ Debug
+                  console.log(
+                    "🧠 Memory Scope:",
+                    isUserScope ? "Per-User" : "Per-Ticket"
                   );
+                  console.log("📜 History Context:\n", trimmedHistory);
+
+                  // 👇 Build final message payload for the model
+                  const finalMessages = [
+                    { role: "system", content: personality },
+                    { role: "system", content: historyContextLabel },
+                    ...trimmedHistory,
+                    { role: "user", content: prompt },
+                  ];
 
                   try {
                     // Call OpenRouter AI
@@ -241,11 +273,7 @@ module.exports = {
                       "https://openrouter.ai/api/v1/chat/completions",
                       {
                         model: modelUsedPrimary,
-                        messages: [
-                          { role: "system", content: personality },
-                          ...history, // Include conversation history
-                          { role: "user", content: prompt },
-                        ],
+                        messages: finalMessages,
                         max_tokens: maxTokens,
                       },
                       {
@@ -280,14 +308,9 @@ module.exports = {
 
                     // Add the AI's response to the history
                     db.run(
-                      "INSERT INTO conversation_history (ticket_id, role, content) VALUES (?, ?, ?)",
-                      [ticket.id, "assistant", truncatedReply]
+                      "INSERT INTO conversation_history (ticket_id, role, content, user_id) VALUES (?, ?, ?, ?)",
+                      [ticketId, "assistant", truncatedReply, userId]
                     );
-
-                    // ✅ Edit the "thinking" message with the formatted response
-                    return await thinkingMessage.edit({
-                      content: truncatedReply,
-                    });
                     db.run(
                       `INSERT INTO ai_logs (
                         user_id, guild_id, ticket_id, prompt_length, model_used,
@@ -296,7 +319,7 @@ module.exports = {
                       [
                         message.author.id,
                         message.guild.id,
-                        ticket.id,
+                        ticketId,
                         promptLength,
                         modelUsedPrimary,
                         false,
@@ -315,6 +338,10 @@ module.exports = {
                         }
                       }
                     );
+                    // ✅ Edit the "thinking" message with the formatted response
+                    return await thinkingMessage.edit({
+                      content: truncatedReply,
+                    });
                   } catch (apiError) {
                     console.error("❌ OpenRouter API error:", apiError);
                     if (apiError.response) {
@@ -378,14 +405,10 @@ module.exports = {
 
                       // Add the fallback response to the history
                       db.run(
-                        "INSERT INTO conversation_history (ticket_id, role, content) VALUES (?, ?, ?)",
-                        [ticket.id, "assistant", truncatedFallbackReply]
+                        "INSERT INTO conversation_history (ticket_id, role, content, user_id) VALUES (?, ?, ?, ?)",
+                        [ticketId, "assistant", truncatedFallbackReply, userId]
                       );
                       const responseTime = Date.now() - fallbackStart;
-                      // ✅ Edit the "thinking" message with the fallback response
-                      return await thinkingMessage.edit({
-                        content: truncatedFallbackReply,
-                      });
                       db.run(
                         `INSERT INTO ai_logs (
                           user_id, guild_id, ticket_id, prompt_length, model_used,
@@ -394,7 +417,7 @@ module.exports = {
                         [
                           message.author.id,
                           message.guild.id,
-                          ticket.id,
+                          ticketId,
                           promptLength,
                           modelUsedPrimary,
                           false,
@@ -413,6 +436,10 @@ module.exports = {
                           }
                         }
                       );
+                      // ✅ Edit the "thinking" message with the fallback response
+                      return await thinkingMessage.edit({
+                        content: truncatedFallbackReply,
+                      });
                     } catch (fallbackError) {
                       console.error("❌ Error in AI fallback:", fallbackError);
 
@@ -430,7 +457,7 @@ module.exports = {
                         [
                           message.author.id,
                           message.guild.id,
-                          ticket.id,
+                          ticketId,
                           promptLength,
                           modelUsedFallback,
                           true,
