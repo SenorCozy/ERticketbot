@@ -1391,14 +1391,22 @@ async function checkIdleTickets(client) {
               continue;
             }
 
-            // Send the reminder message
+            // Send the reminder message with buttons
             await channel.send({
-              content: `<@${ticket.user_id}> Are you still needing help? If you still need help please let the helpers know so they don't close this ticket for inactivity. Apologies for the wait but ticket help can be slow during certain time periods. If you no longer need help, please let the helpers know and we'll close it for you - thanks!.`,
+              content: `<@${ticket.user_id}> Are you still needing help?`,
+              components: [
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder()
+                    .setCustomId(`snooze_ticket_${ticket.id}`)
+                    .setLabel("I still need help")
+                    .setStyle(ButtonStyle.Primary),
+                  new ButtonBuilder()
+                    .setCustomId(`user_close_ticket_${ticket.id}`)
+                    .setLabel("I don't need help anymore (Close Ticket)")
+                    .setStyle(ButtonStyle.Danger)
+                ),
+              ],
             });
-
-            console.log(
-              `🔔 Sent idle reminder to ticket: ${ticket.channel_id}`
-            );
 
             // Update the last_reminder_sent timestamp in the database
             db.run(

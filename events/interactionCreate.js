@@ -338,6 +338,125 @@ module.exports = {
               );
             }
           }
+        } else if (
+          ["platformrole_pc", "platformrole_ps", "platformrole_xbox"].includes(
+            interaction.customId
+          )
+        ) {
+          const roleMap = {
+            platformrole_pc: process.env.PLATFORM_HELPER_PC,
+            platformrole_ps: process.env.PLATFORM_HELPER_PS,
+            platformrole_xbox: process.env.PLATFORM_HELPER_XBOX,
+          };
+
+          const roleId = roleMap[interaction.customId];
+          const member = interaction.guild.members.cache.get(
+            interaction.user.id
+          );
+
+          if (!roleId || !member) {
+            return interaction.reply({
+              content: "❌ Something went wrong.",
+              flags: 64,
+            });
+          }
+
+          const hasRole = member.roles.cache.has(roleId);
+
+          try {
+            if (hasRole) {
+              await member.roles.remove(roleId);
+              await interaction.reply({
+                content: "✅ Role removed!",
+                flags: 64,
+              });
+            } else {
+              await member.roles.add(roleId);
+              await interaction.reply({
+                content: "✅ Role added!",
+                flags: 64,
+              });
+            }
+          } catch (err) {
+            console.error("❌ Failed to toggle role:", err);
+            interaction.reply({
+              content: "⚠️ Unable to update your roles. Please try again.",
+              flags: 64,
+            });
+          }
+        } else if (interaction.customId.startsWith("snooze_ticket_")) {
+          const ticketId = interaction.customId.split("_").pop();
+          const snoozeUntil = new Date(
+            Date.now() + 60 * 60 * 1000
+          ).toISOString(); // 1 hour from now
+          const now = new Date().toISOString();
+
+          db.run(
+            "UPDATE tickets SET last_reminder_sent = ?, last_activity = ? WHERE id = ?",
+            [snoozeUntil, now, ticketId],
+            (err) => {
+              if (err) {
+                console.error("❌ Failed to snooze idle reminder:", err);
+                return interaction.reply({
+                  content: "Something went wrong snoozing this reminder.",
+                  flags: 64,
+                });
+              }
+              interaction.reply({
+                content: "✅ Got it! I’ll snooze this reminder for 1 hour.",
+              });
+            }
+          );
+        } else if (interaction.customId.startsWith("user_close_ticket_")) {
+          const ticketId = interaction.customId.split("_").pop();
+
+          db.get(
+            "SELECT * FROM tickets WHERE id = ?",
+            [ticketId],
+            async (err, ticket) => {
+              if (err || !ticket) {
+                console.error(
+                  "❌ Failed to fetch ticket for user-initiated close:",
+                  err
+                );
+                return interaction.reply({
+                  content: "Error closing ticket.",
+                  flags: 64,
+                });
+              }
+
+              if (interaction.user.id !== ticket.user_id) {
+                return interaction.reply({
+                  content:
+                    "❌ Only the original ticket creator can use this button.",
+                  flags: 64,
+                  ephemeral: true,
+                });
+              }
+
+              const ticketChannel = interaction.guild.channels.cache.get(
+                ticket.channel_id
+              );
+              if (!ticketChannel)
+                return interaction.reply({
+                  content: "Ticket channel no longer exists.",
+                  flags: 64,
+                });
+
+              // Default reason
+              const closureReason = "Closed by user via idle reminder button";
+
+              // ✅ Reuse the transcript + close logic, skipping role check and modal
+              await closeTicket({
+                interaction,
+                ticket,
+                ticketChannel,
+                closedBy: interaction.user,
+                closureReason,
+                skipPermissionCheck: true,
+              });
+            }
+          );
         }
 
         // ✅ Handle "Claim Ticket" Button
@@ -551,40 +670,62 @@ module.exports = {
             });
           }
 
-          // ✅ Check if the user actually claimed this ticket
+          // 🔍 Fetch ticket info from DB
           db.get(
             "SELECT * FROM tickets WHERE channel_id = ?",
             [ticketChannel.id],
             async (err, ticket) => {
-              if (!ticket || ticket.claimed_by !== interaction.user.id) {
+              if (!ticket) {
+                return interaction.reply({
+                  content: "❌ Ticket not found.",
+                  flags: 64,
+                });
+              }
+
+              const member = interaction.guild.members.cache.get(
+                interaction.user.id
+              );
+
+              const isClaimer = ticket.claimed_by === interaction.user.id;
+              const bypassRoles = [
+                process.env.ELDEN_MODERATOR,
+                process.env.ELDEN_ENFORCER,
+                process.env.TICKET_MODERATOR_ROLE,
+              ];
+
+              const hasBypassRole = member.roles.cache.some((role) =>
+                bypassRoles.includes(role.id)
+              );
+
+              if (!isClaimer && !hasBypassRole) {
                 return interaction.reply({
                   content: "❌ You can only unclaim tickets that you claimed.",
                   flags: 64,
                 });
               }
 
-              // ✅ Unclaim the ticket in the database
+              // ✅ Unclaim in DB
               db.run(
                 "UPDATE tickets SET claimed_by = NULL WHERE channel_id = ?",
                 [ticketChannel.id]
               );
 
-              // ✅ Restore original permissions
-
+              // ✅ Restore permissions
               const activeHelperRole = interaction.guild.roles.cache.get(
                 process.env.ACTIVE_HELPER_ROLE
               );
+
               const ticketModRole = interaction.guild.roles.cache.get(
                 process.env.TICKET_MODERATOR_ROLE
               );
 
               await ticketChannel.permissionOverwrites.set([
                 {
-                  id: interaction.guild.id, // @everyone
+                  id: interaction.guild.id,
                   deny: [PermissionsBitField.Flags.ViewChannel],
                 },
                 {
-                  id: ticket.user_id, // Ticket creator
+                  id: ticket.user_id,
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -592,7 +733,7 @@ module.exports = {
                   ],
                 },
                 {
-                  id: activeHelperRole.id, // Restore visibility to all Active Helpers
+                  id: activeHelperRole.id,
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -600,7 +741,7 @@ module.exports = {
                   ],
                 },
                 {
-                  id: ticketModRole.id, // Moderators always have access
+                  id: ticketModRole.id,
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -608,7 +749,7 @@ module.exports = {
                   ],
                 },
                 {
-                  id: process.env.ELDEN_MODERATOR, // ✅ New role
+                  id: process.env.ELDEN_MODERATOR,
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -616,7 +757,7 @@ module.exports = {
                   ],
                 },
                 {
-                  id: process.env.ELDEN_ENFORCER, // ✅ New role
+                  id: process.env.ELDEN_ENFORCER,
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -624,7 +765,7 @@ module.exports = {
                   ],
                 },
                 {
-                  id: process.env.BOTS, // ✅ New role
+                  id: process.env.BOTS,
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -632,7 +773,7 @@ module.exports = {
                   ],
                 },
                 {
-                  id: interaction.client.user.id, // The bot
+                  id: interaction.client.user.id,
                   allow: [
                     PermissionsBitField.Flags.ViewChannel,
                     PermissionsBitField.Flags.SendMessages,
@@ -645,8 +786,8 @@ module.exports = {
 
               await interaction.reply({
                 content:
-                  "🔴 You have unclaimed this ticket. It is now available for other helpers.",
-                components: [], // Removes buttons
+                  "🔴 Ticket has been unclaimed. It is now available for other helpers.",
+                components: [],
               });
 
               console.log(
@@ -655,6 +796,7 @@ module.exports = {
             }
           );
         }
+
         // Handle undo rep/remove rep button
         else if (interaction.customId.startsWith("undo_rep_")) {
           console.log("🔴 Undo Rep button clicked");
@@ -816,7 +958,6 @@ async function createPlatformTicket(interaction, client) {
     const guild = interaction.guild;
     const ticketCreator = interaction.user;
 
-    // ✅ Ensure user is still in the guild before fetching their roles
     const member = await guild.members.fetch(ticketCreator.id).catch((err) => {
       console.error("❌ Failed to fetch user:", err);
       return null;
@@ -830,13 +971,12 @@ async function createPlatformTicket(interaction, client) {
       });
     }
 
-    // ✅ Check if the user is blacklisted
     db.get(
       "SELECT * FROM blacklist WHERE user_id = ?",
       [ticketCreator.id],
       async (err, row) => {
         if (err) {
-          console.error("❌ Database error checking blacklist:", err);
+          console.error("❌ Error checking blacklist:", err);
           return interaction.reply({
             content:
               "❌ An error occurred while checking your ticket eligibility.",
@@ -845,9 +985,6 @@ async function createPlatformTicket(interaction, client) {
         }
 
         if (row) {
-          console.warn(
-            `⚠️ User ${ticketCreator.id} is blacklisted. Preventing ticket creation.`
-          );
           return interaction.reply({
             content: `❌ You are **blacklisted** from creating tickets.\n**Reason:** ${
               row.reason || "No reason provided."
@@ -856,98 +993,130 @@ async function createPlatformTicket(interaction, client) {
           });
         }
 
-        // ✅ Continue ticket creation if the user is NOT blacklisted
         const platform = interaction.customId;
-        const generalRoleId = GENERAL_PLATFORM_ROLES[platform]; // General platform role
-        const platformHelperRoleId = PLATFORM_HELPER_ROLES[platform]; // Helper role
+        const generalRoleId = GENERAL_PLATFORM_ROLES[platform];
+        const platformHelperRoleId = PLATFORM_HELPER_ROLES[platform];
 
         if (!generalRoleId || !platformHelperRoleId) {
           return interaction.reply({
-            content: "An error occurred selecting the platform.",
+            content: "❌ Invalid platform selected.",
             flags: 64,
           });
         }
 
-        // ✅ Defer the reply to prevent interaction timeout
-        await interaction.deferReply({ flags: 64 });
-
-        // ✅ Attempt to assign the general platform role
         try {
-          await assignGeneralPlatformRole(member, generalRoleId);
-        } catch (roleError) {
-          console.warn(
-            "⚠️ Failed to assign platform role, continuing...",
-            roleError
-          );
+          await interaction.deferReply({ flags: 64 });
+        } catch (deferErr) {
+          console.warn("⚠️ Failed to defer interaction:", deferErr);
         }
 
-        // ✅ Check if the user already has an open ticket
-        const existingTicket = await getExistingTicket(ticketCreator.id);
-        if (existingTicket) {
+        try {
+          await assignGeneralPlatformRole(member, generalRoleId);
+        } catch (assignErr) {
+          console.warn("⚠️ Failed to assign general platform role:", assignErr);
+        }
+
+        let existingTicket;
+        try {
+          existingTicket = await getExistingTicket(ticketCreator.id);
+        } catch (existErr) {
+          console.error("❌ Error checking for existing ticket:", existErr);
           return interaction.editReply({
-            content: `You already have an open ticket: <#${existingTicket.channel_id}>`,
+            content: "An error occurred while checking for existing tickets.",
           });
         }
 
-        // ✅ Create the ticket channel
-        const ticketChannel = await createTicketChannel(
-          guild,
-          ticketCreator,
-          client,
-          interaction
-        );
-        if (!ticketChannel) {
-          throw new Error("Failed to create ticket channel.");
+        if (existingTicket) {
+          return interaction.editReply({
+            content: `❗ You already have an open ticket: <#${existingTicket.channel_id}>`,
+          });
         }
 
-        console.log(`✅ Ticket channel created: ${ticketChannel.id}`);
+        let ticketChannel;
+        try {
+          ticketChannel = await createTicketChannel(
+            guild,
+            ticketCreator,
+            client,
+            interaction
+          );
+          if (!ticketChannel) throw new Error("Channel creation failed.");
+          console.log(`✅ Ticket channel created: ${ticketChannel.id}`);
+        } catch (channelErr) {
+          console.error("❌ Error creating ticket channel:", channelErr);
+          return interaction.editReply({
+            content: "An error occurred while creating your ticket channel.",
+          });
+        }
 
-        // ✅ Store the ticket in the database
         try {
           await storeTicketInDatabase(
             ticketCreator,
             platform,
             ticketChannel.id
           );
-        } catch (dbError) {
-          console.error("❌ Failed to store ticket in the database:", dbError);
+        } catch (storeErr) {
+          console.error("❌ Error storing ticket in DB:", storeErr);
           return interaction.editReply({
             content:
-              "An error occurred while registering your ticket in the database.",
+              "An error occurred while saving your ticket in the database.",
           });
         }
 
-        await sendTicketEmbed(
-          ticketChannel,
-          ticketCreator,
-          platformHelperRoleId
-        );
-        // ⏳ Wait 5 seconds before sending the reminder
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        try {
+          db.run(
+            "UPDATE tickets SET last_activity = ? WHERE channel_id = ?",
+            [new Date().toISOString(), ticketChannel.id],
+            (err) => {
+              if (err) {
+                console.error(
+                  "❌ Failed to update last_activity timestamp:",
+                  err
+                );
+              } else {
+                console.log(
+                  `🕒 Set last_activity for ticket ${ticketChannel.id}`
+                );
+              }
+            }
+          );
+        } catch (activityErr) {
+          console.error("❌ Error setting initial last_activity:", activityErr);
+        }
 
-        // 🔔 Send the follow-up reminder message
-        await ticketChannel.send({
-          content: `💡 **Reminder:** Please remember to **thank your helper** after your request is complete!\nMention them using \`@username\` and include the word **"thank you"** in the same message. This helps them gain reputation and unlock new roles! 🎖️`,
-        });
+        try {
+          await sendTicketEmbed(
+            ticketChannel,
+            ticketCreator,
+            platformHelperRoleId
+          );
+        } catch (embedErr) {
+          console.warn("⚠️ Failed to send ticket embed:", embedErr);
+        }
 
-        // ✅ Notify the user
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        try {
+          await ticketChannel.send({
+            content: `💡 **Reminder:** Please remember to **thank your helper** after your request is complete!\nMention them using \`@username\` and include the word **"thank you"** in the same message. This helps them gain reputation and unlock new roles! 🎖️`,
+          });
+        } catch (reminderErr) {
+          console.warn("⚠️ Failed to send reminder message:", reminderErr);
+        }
+
         return interaction.editReply({
           content: `✅ Your ticket has been created: <#${ticketChannel.id}>`,
         });
       }
     );
-  } catch (error) {
-    console.error(
-      "❌ Unexpected error in createPlatformTicket function:",
-      error
-    );
+  } catch (outerErr) {
+    console.error("❌ Unexpected error in createPlatformTicket:", outerErr);
     return interaction
       .reply({
-        content:
-          "An unexpected error occurred while processing your ticket request.",
+        content: "An unexpected error occurred while creating your ticket.",
         flags: 64,
       })
-      .catch(() => console.error("⚠️ Failed to send error message to user."));
+      .catch(() => console.error("⚠️ Failed to send fallback error message."));
   }
 }
 
@@ -1223,4 +1392,173 @@ async function createTicketChannel(guild, user, client, interaction) {
   });
 
   return ticketChannel;
+}
+
+async function closeTicket({
+  ticketChannel,
+  closedBy,
+  closureReason = "Closed by ticket opener (idle reminder button)",
+  skipPermissionCheck = false,
+  interaction,
+}) {
+  const ticketChannelId = ticketChannel.id;
+
+  const member = ticketChannel.guild.members.cache.get(closedBy.id);
+  const isHelper = member.roles.cache.has(process.env.ACTIVE_HELPER_ROLE);
+  const isMod = member.roles.cache.has(process.env.TICKET_MODERATOR_ROLE);
+
+  if (!skipPermissionCheck && !isHelper && !isMod) {
+    return interaction.reply({
+      content: "❌ You don’t have permission to close this ticket directly.",
+      flags: 64,
+    });
+  }
+
+  db.get(
+    "SELECT * FROM tickets WHERE channel_id = ?",
+    [ticketChannelId],
+    async (err, ticket) => {
+      if (err || !ticket) {
+        console.error("❌ Error fetching ticket data:", err);
+        return interaction.reply({
+          content: "This ticket is not registered in the database.",
+          flags: 64,
+        });
+      }
+
+      let messages = [];
+      try {
+        messages = await fetchAllMessages(ticketChannel);
+      } catch (fetchError) {
+        console.error("❌ Error fetching messages for transcript:", fetchError);
+      }
+
+      const formattedMessages = messages.map((msg) => ({
+        user_id: msg.author.id,
+        username: msg.author.username,
+        avatar: msg.author.displayAvatarURL({ dynamic: true }),
+        content:
+          msg.content?.trim() ||
+          (msg.attachments.size ? "(Image/GIF attached)" : "(No content)"),
+        timestamp: msg.createdTimestamp,
+        attachments: msg.attachments.size
+          ? JSON.stringify([...msg.attachments.values()].map((a) => a.proxyURL))
+          : null,
+        embeds: msg.embeds.length
+          ? JSON.stringify(msg.embeds.map((e) => e.toJSON()))
+          : null,
+        reactions: msg.reactions.cache.size
+          ? JSON.stringify(
+              msg.reactions.cache.map((r) => ({
+                emoji: r.emoji.name,
+                count: r.count,
+              }))
+            )
+          : null,
+      }));
+
+      const transcriptId = `transcript_${Date.now()}`;
+
+      // Save transcript data
+      db.run(
+        `
+      INSERT INTO transcripts (id, ticket_id, user_id, username, closed_by, closed_by_username, closure_reason, created_at, closed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          transcriptId,
+          ticket.id,
+          ticket.user_id,
+          ticket.username,
+          closedBy.id,
+          closedBy.username,
+          closureReason,
+          ticket.created_at,
+          new Date().toISOString(),
+        ]
+      );
+
+      formattedMessages.forEach((msg) => {
+        db.run(
+          `
+        INSERT INTO transcript_messages (transcript_id, user_id, username, avatar_url, message, timestamp, attachment_url, embed_data, reactions)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            transcriptId,
+            msg.user_id,
+            msg.username,
+            msg.avatar,
+            msg.content,
+            msg.timestamp,
+            msg.attachments,
+            msg.embeds,
+            msg.reactions,
+          ]
+        );
+      });
+
+      const transcriptUrl = `${process.env.TRANSCRIPT_BASE_URL}/${transcriptId}`;
+
+      const formatTimestamp = (iso) =>
+        `<t:${Math.floor(new Date(iso).getTime() / 1000)}:F>`;
+
+      const embed = new EmbedBuilder()
+        .setColor(0xff0000)
+        .setTitle("🎟️ Ticket Closed")
+        .addFields(
+          { name: "📄 Ticket ID", value: `${ticket.id}`, inline: true },
+          { name: "✅ Opened By", value: `<@${ticket.user_id}>`, inline: true },
+          { name: "🔴 Closed By", value: `<@${closedBy.id}>`, inline: true },
+          { name: "📝 Reason", value: closureReason },
+          {
+            name: "📅 Date Created",
+            value: formatTimestamp(ticket.created_at),
+            inline: true,
+          },
+          {
+            name: "📅 Date Closed",
+            value: formatTimestamp(new Date().toISOString()),
+            inline: true,
+          }
+        );
+
+      if (ticket.claimed_by) {
+        embed.addFields({
+          name: "🎯 Claimed By",
+          value: `<@${ticket.claimed_by}>`,
+          inline: true,
+        });
+      }
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel("📜 View Online Transcript")
+          .setStyle(ButtonStyle.Link)
+          .setURL(transcriptUrl)
+      );
+
+      const logsChannel = ticketChannel.guild.channels.cache.get(
+        process.env.TRANSCRIPT_CHANNEL_ID
+      );
+      if (logsChannel) {
+        logsChannel.send({ embeds: [embed], components: [row] });
+      }
+
+      clearConversationHistory(ticket.id, (clearErr) => {
+        if (clearErr)
+          console.error("❌ Error clearing conversation history:", clearErr);
+      });
+
+      db.run(`UPDATE tickets SET status = 'closed' WHERE id = ?`, [ticket.id]);
+      db.run(`DELETE FROM tickets WHERE id = ?`, [ticket.id]);
+
+      if (interaction && interaction.reply) {
+        await interaction.reply({
+          content: "Ticket closed successfully. Transcript saved.",
+          flags: 64,
+        });
+      }
+
+      await ticketChannel.delete();
+    }
+  );
 }

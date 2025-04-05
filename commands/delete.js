@@ -24,6 +24,7 @@ module.exports = {
     // ✅ Restrict access to users with the "Ticket Moderator" role
     const allowedRoles = [
       process.env.ELDER_TICKET_MODERATOR_ROLE,
+      process.env.TICKET_MODERATOR_ROLE,
       process.env.ELDEN_MODERATOR,
       process.env.ELDEN_ENFORCER,
     ];

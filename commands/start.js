@@ -4,7 +4,6 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  PermissionsBitField,
 } = require("discord.js");
 
 require("dotenv").config();
@@ -17,12 +16,11 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // Fetch user information
     const guildMember = await interaction.guild.members.fetch(
       interaction.user.id
     );
 
-    // ✅ Restrict access to users with the "Ticket Moderator" role
+    // ✅ Restrict access to specific roles
     const allowedRoles = [
       process.env.ELDER_TICKET_MODERATOR_ROLE,
       process.env.ELDEN_MODERATOR,
@@ -40,21 +38,30 @@ module.exports = {
       });
     }
 
-    // ✅ Create the ticket embed & button
+    // ✅ Embed with enhanced formatting and emojis
     const embed = new EmbedBuilder()
-      .setColor(0x0099ff)
-      .setTitle("Need Help With a Boss or an Area?")
+      .setColor(0x5865f2) // Discord blurple
+      .setTitle("🎮 Need Help With a Boss or an Area?")
       .setDescription(
-        "Click the button below to open a game request ticket and our Elden Ring Helpers will be happy to assist!"
-      );
+        "**Click the button below** to open a game request ticket.\n" +
+          "Our **Elden Ring Helpers** can assist with:\n\n" +
+          "• 🧱 Area navigation\n" +
+          "• 👑 Boss fights\n" +
+          "• ❓ General in-game help"
+      )
+      .setFooter({ text: "Your journey awaits, Tarnished." })
+      .setTimestamp();
 
     const createTicketButton = new ButtonBuilder()
       .setCustomId("create_ticket")
-      .setLabel("Open Game Help Ticket")
-      .setStyle(ButtonStyle.Primary);
+      .setLabel("📝 Open Game Help Ticket")
+      .setStyle(ButtonStyle.Success);
 
     const row = new ActionRowBuilder().addComponents(createTicketButton);
 
-    await interaction.reply({ embeds: [embed], components: [row] });
+    await interaction.reply({
+      embeds: [embed],
+      components: [row],
+    });
   },
 };

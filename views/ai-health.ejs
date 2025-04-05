@@ -17,7 +17,11 @@
       <!-- 🔢 Summary Info -->
       <div class="summary-box">
         <div><strong>Total Logs:</strong> <%= logs.length %></div>
-        <div><strong>Last Entry:</strong> <%= logs[0] ? new Date(logs[0].timestamp).toLocaleString() : 'N/A' %></div>
+        <div id="last-entry" data-ts="<%= logs[0] ? logs[0].timestamp : '' %>">
+          <strong>Last Entry:</strong>
+          <span class="timestamp-text"><%= logs[0] ? 'Loading…' : 'N/A' %></span>
+          <span class="timestamp-relative"></span>
+        </div>
       </div>
 
       <!-- 📈 Chart Placeholders -->
@@ -46,7 +50,7 @@
           <tbody>
             <% logs.forEach(log => { %>
               <tr>
-                <td><%= new Date(log.timestamp).toLocaleString() %></td>
+                <td class="local-timestamp" data-ts="<%= log.timestamp %>"></td>
                 <td><%= log.user_id %></td>
                 <td><%= String(log.ticket_id).startsWith("ai_channel") ? "AI Chat" : "Ticket" %></td>
                 <td><%= log.model_used %></td>
@@ -65,40 +69,74 @@
         <a href="/dashboard" class="transcript-view">⬅️ Back to Dashboard</a>
       </p>
     </div>
+
+    <!-- 📊 Charts + Timestamp Localization -->
     <script>
-        const successCount = <%= successCount %>;
-        const failCount = <%= failCount %>;
-        const fallbackCount = <%= fallbackCount %>;
-        const directSuccessCount = <%= directSuccessCount %>;
-      
-        const ctx1 = document.getElementById('successRateChart').getContext('2d');
-        const ctx2 = document.getElementById('fallbackRateChart').getContext('2d');
-      
-        new Chart(ctx1, {
-          type: 'doughnut',
-          data: {
-            labels: ['Success', 'Failure'],
-            datasets: [{
-              label: 'Success Rate',
-              data: [successCount, failCount],
-              backgroundColor: ['#22c55e', '#ef4444'],
-            }]
-          }
-        });
-      
-        new Chart(ctx2, {
-          type: 'doughnut',
-          data: {
-            labels: ['Fallback Used', 'Direct Success'],
-            datasets: [{
-              label: 'Fallback Rate',
-              data: [fallbackCount, directSuccessCount],
-              backgroundColor: ['#facc15', '#60a5fa'],
-            }]
-          }
-        });
-      </script>
-      
-  
+      const successCount = <%= successCount %>;
+      const failCount = <%= failCount %>;
+      const fallbackCount = <%= fallbackCount %>;
+      const directSuccessCount = <%= directSuccessCount %>;
+
+      const ctx1 = document.getElementById('successRateChart').getContext('2d');
+      const ctx2 = document.getElementById('fallbackRateChart').getContext('2d');
+
+      new Chart(ctx1, {
+        type: 'doughnut',
+        data: {
+          labels: ['Success', 'Failure'],
+          datasets: [{
+            label: 'Success Rate',
+            data: [successCount, failCount],
+            backgroundColor: ['#22c55e', '#ef4444'],
+          }]
+        }
+      });
+
+      new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: ['Fallback Used', 'Direct Success'],
+          datasets: [{
+            label: 'Fallback Rate',
+            data: [fallbackCount, directSuccessCount],
+            backgroundColor: ['#facc15', '#60a5fa'],
+          }]
+        }
+      });
+
+      const opts = { 
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, 
+  year: "numeric", month: "numeric", day: "numeric",
+  hour: "numeric", minute: "numeric", second: "numeric",
+  hour12: true
+};
+
+document.querySelectorAll(".local-timestamp").forEach(td => {
+  const ts = td.getAttribute("data-ts");
+  const date = new Date(ts); // ✅ parse string timestamp
+  td.textContent = `${date.toLocaleString(undefined, opts)} (${timeAgo(date)})`;
+});
+
+const lastEntryContainer = document.getElementById("last-entry");
+if (lastEntryContainer) {
+  const ts = lastEntryContainer.getAttribute("data-ts");
+  if (ts) {
+    const date = new Date(ts); // ✅ parse string timestamp
+    lastEntryContainer.querySelector(".timestamp-text").textContent = date.toLocaleString(undefined, opts);
+  }
+}
+
+function timeAgo(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+    </script>
   </body>
 </html>
